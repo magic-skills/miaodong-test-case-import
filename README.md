@@ -52,17 +52,27 @@ python3 scripts/md_client.py     # 打印目标智能体 / 场景树 / 测试集
 `install.sh` 用 symlink 装到三个位置（`~/.claude/skills`、`~/.codex/skills`、`~/.agents/skills`），
 以后 `git pull` 一下就更新，不用重装。
 
-## 多客户切换（profile）
+## 凭证与多客户
 
-同时对接多个客户时，把稳定的环境坐标存成 profile，避免每次手 export 四个变量搞错 `MD_BOT`：
+**给同事「域名 + 哪个智能体」，永远不给 token**——JWT 里编着身份，给出去等于共享账号。
 
 ```bash
+# 拿全四个变量：打印一段 JS，在目标客户控制台的智能体页面 Console 里执行，
+# 自动把 export MD_BASE=.. MD_ORG=.. MD_BOT=.. MD_TOKEN=.. 复制到剪贴板
+python3 scripts/md_client.py bootstrap
+
+# 多客户：存成 profile（只存 base/org/bot，绝不存 token）
 MD_BASE=.. MD_ORG=.. MD_BOT=.. MD_TOKEN=.. python3 scripts/md_client.py save 客户A
 python3 scripts/md_client.py profiles
 MD_PROFILE=客户A MD_TOKEN=<JWT> python3 scripts/md_client.py
+
+# 交接给同事：发一个不含 token 的环境坐标串
+python3 scripts/md_client.py share 客户A     # -> md-profile:eyJ...
+python3 scripts/md_client.py adopt 'md-profile:eyJ...'
 ```
 
-存在 `~/.miaodong/profiles.json`（权限 600，不在仓库里），**只存 base/org/bot，绝不存 token**。
+profile 存 `~/.miaodong/profiles.json`（权限 600，不在仓库里）。
+`localStorage` 按域名隔离，换客户要重新取 token；报 401 就是过期了，重取。
 
 ## 换客户 / 换部署
 

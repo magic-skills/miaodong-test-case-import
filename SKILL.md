@@ -83,6 +83,54 @@ audit(c, rep["testSetId"], cases)
 reconcile_scenario_tree(c, expected_total=len(cases))
 ```
 
+## 凭证与交接：要告诉同事什么
+
+**结论：给「域名 + 哪个智能体」，永远不给 token。**
+
+| 变量 | 谁提供 | 说明 |
+|---|---|---|
+| `MD_TOKEN` | **同事自己** | JWT 里编着身份(id/name/email)。给他你的 token = 共享账号，操作都记你名下，且会过期 |
+| `MD_ORG` | 他自己取 | 登录后从 localStorage 取 |
+| `MD_BOT` | 他自己取 | 打开目标智能体，地址栏里就有 |
+| **`MD_BASE`** | **你给** | 私有化部署域名，猜不到 |
+| **哪个智能体** | **你给** | 业务信息。给**名字**，不是 UUID |
+
+### 最省事的交接：发一个 profile 串
+
+```bash
+python3 scripts/md_client.py share 客户A       # 你这边
+# md-profile:eyJiYXNlIjoi...
+```
+
+同事拿到后：
+
+```bash
+python3 scripts/md_client.py adopt 'md-profile:eyJiYXNlIjoi...'
+```
+
+串里是 **域名 / orgId / botId / 智能体名备注**，**没有 token**（做了双重防御，导出时主动剔除）。
+它只是 base64 单行编码，不是加密——当作内部环境坐标对待，别贴到公开渠道。
+
+### 同事怎么拿自己的 token
+
+```bash
+python3 scripts/md_client.py bootstrap
+```
+
+会打印一段 JS 和操作步骤。同事在**该客户控制台的目标智能体页面**打开 Console 粘贴执行，
+自动把一整行 `export MD_BASE=.. MD_ORG=.. MD_BOT=.. MD_TOKEN=..` 复制到剪贴板，粘回终端即可。
+四个变量一次拿全，不用分头找。
+
+三个必须交代的点：
+
+- 这一行含 JWT，**等同账号，不要发群里 / 工单 / 文档**。
+- **localStorage 按域名隔离**：必须在那个客户的控制台执行，换客户要重做一次。
+- token 会过期，脚本报 `401 Authentication failed` 就回去重做。
+
+### 权限边界
+
+skill 不含任何凭证，也不绕过鉴权。同事能导到哪个客户，完全由他自己的控制台账号权限决定。
+
 ## 多客户切换（profile）
 
 一个人常同时对接多个客户的私有部署，每次手 export 四个变量容易搞错——而**搞错 `MD_BOT`

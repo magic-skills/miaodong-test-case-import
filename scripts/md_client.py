@@ -292,6 +292,35 @@ def save_profile(name, base, org, bot, note=""):
     return PROFILE_PATH
 
 
+SHARE_PREFIX = "md-profile:"
+
+JS_SNIPPET = r"""(()=>{try{const u=JSON.parse(localStorage.user);const b=location.pathname.match(/\/agents\/([0-9a-f-]{36})/);if(!u?.token)return'❌ 没读到登录态,先登录控制台';if(!b)return'❌ 请先打开目标智能体页面(地址栏含 /agents/<id>/)再执行';const s=`export MD_BASE=${location.origin} MD_ORG=${u.currentOrg.id} MD_BOT=${b[1]} MD_TOKEN=${u.token}`;try{copy(s)}catch(e){};console.log(s);return'✅ 已复制到剪贴板,粘到终端即可'}catch(e){return'❌ '+e.message}})()"""
+
+
+def share_profile(name):
+    """把一个 profile 编成单行串，便于发给同事。**不含 token**，只是环境坐标。"""
+    import base64
+    ps = load_profiles()
+    if name not in ps: sys.exit(f"没有 profile「{name}」。已有: {sorted(ps) or '（空）'}")
+    p = dict(ps[name]); p["name"] = name
+    p.pop("token", None)   # 防御：任何情况下都不外传 token
+    return SHARE_PREFIX + base64.urlsafe_b64encode(
+        json.dumps(p, ensure_ascii=False, separators=(",", ":")).encode()).decode()
+
+
+def adopt_profile(blob, rename=None):
+    import base64
+    blob = blob.strip()
+    if not blob.startswith(SHARE_PREFIX): sys.exit(f"不是有效的分享串（应以 {SHARE_PREFIX} 开头）")
+    try: p = json.loads(base64.urlsafe_b64decode(blob[len(SHARE_PREFIX):]).decode())
+    except Exception as e: sys.exit(f"分享串解析失败: {e}")
+    name = rename or p.get("name") or "imported"
+    for k in ("base", "org", "bot"):
+        if not p.get(k): sys.exit(f"分享串缺少 {k}")
+    save_profile(name, p["base"], p["org"], p["bot"], p.get("note", ""))
+    return name, p
+
+
 def client_from_env():
     """建客户端。两种方式：
 
@@ -338,6 +367,36 @@ def _cli():
         for k, v in ps.items():
             print(f"  {k:<16} {v['base']}  bot={v['bot']}  {v.get('note','')}")
         print("\n用法: MD_PROFILE=<名字> MD_TOKEN=<JWT> python3 md_client.py")
+        return True
+    if args and args[0] == "bootstrap":
+        print("""在【目标客户的控制台】里做（每个客户各做一次）：
+
+  1. 浏览器登录该客户控制台，打开你要导入的那个智能体页面
+     （地址栏形如 https://<域名>/main/agents/<botId>/...）
+  2. 打开开发者工具 Console：Chrome/Edge  Cmd+Option+J (mac) / F12 (win)
+     ⚠️ 首次可能提示不允许粘贴，按提示输入 allow pasting 后回车
+  3. 粘贴下面整行并回车：
+
+""" + JS_SNIPPET + """
+
+  4. 会自动复制好一整行 export 命令，直接粘到终端执行。
+
+注意：
+  · 这一行里含你的 JWT，等同于你的账号——**不要发到群里/工单/文档**。
+  · token 会过期，脚本报 401 就回来重做一次。
+  · localStorage 按域名隔离：必须在【该客户】的控制台页面执行，换客户要重做。""")
+        return True
+    if args and args[0] == "share":
+        if len(args) < 2: sys.exit("用法: python3 md_client.py share <客户名>")
+        print(share_profile(args[1]))
+        print("\n↑ 发给同事，对方执行: python3 md_client.py adopt '<上面这串>'", file=sys.stderr)
+        print("   串里只有 域名/orgId/botId/备注，**没有 token**；对方仍需自己的账号。", file=sys.stderr)
+        return True
+    if args and args[0] == "adopt":
+        if len(args) < 2: sys.exit("用法: python3 md_client.py adopt '<md-profile:...>' [改名]")
+        name, p = adopt_profile(args[1], args[2] if len(args) > 2 else None)
+        print(f"已导入 profile「{name}」: {p['base']}  bot={p['bot']}  {p.get('note','')}")
+        print(f"用法: MD_PROFILE={name} MD_TOKEN=<你自己的JWT> python3 md_client.py")
         return True
     if args and args[0] == "save":
         if len(args) < 2: sys.exit("用法: MD_BASE=.. MD_ORG=.. MD_BOT=.. python3 md_client.py save <客户名> [备注]")
