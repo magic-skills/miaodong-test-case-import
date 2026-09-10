@@ -83,6 +83,48 @@ audit(c, rep["testSetId"], cases)
 reconcile_scenario_tree(c, expected_total=len(cases))
 ```
 
+## 换客户 / 换部署
+
+秒懂多为私有部署，**不同客户的域名、组织、智能体、场景树、会话变量、乃至平台版本都不同**。
+换环境第一件事：
+
+```bash
+python3 scripts/md_client.py     # 打印目标智能体 + 环境能力 + 场景树 + 消息历史 id
+```
+
+`capabilities()` 会告诉你目标属于哪一代：
+
+| 结果 | 含义 | 影响 |
+|---|---|---|
+| `new (Agent Test Lab, 有场景树)` | 有 `scenario/tree` | 全流程可用，含挂场景 |
+| `old (仅测试集+用例，无场景树)` | `scenario/tree` 返回 404 | 只能建测试集 + 灌用例，**不要传 `_scenario`** |
+| `test_set` 都取不到 | 域名 / orgId / token 有一项不对 | 先别继续 |
+
+老一代环境下即使传了 `_scenario`，`import_test_set()` 也会**降级跳过挂载而不是报错**——
+用例照常写入，返回值里 `scenarioSkipped` 会说明原因。
+
+### 换环境要重新取的东西（都别硬编码）
+
+| 东西 | 怎么拿 |
+|---|---|
+| `MD_BASE` / `MD_ORG` / `MD_BOT` | 见上节 |
+| 场景节点 id | `c.scenario_map()` —— per-bot |
+| 「消息历史」变量 id | `c.message_history_id()` —— per-bot，且**变量名可能不叫这个**，取不到时报错会列出该 bot 的现有变量，人工确认后直接传 `history_var_id` |
+| 场景节点本身 | 新 bot 的场景树可能是空的。本 skill **不建场景节点**，需要先在 UI 建好 |
+
+### 一定要重写的部分
+
+**用例生成逻辑**（源数据 → `build_case()` 的那段循环）是领域相关的：列名、场景划分规则、
+期望描述话术，每个客户都不一样。skill 的示例只是模板。
+
+导入、回读、挂场景、审计这四步是通用的，不用动。
+
+### 可能失效的部分
+
+契约实测于前端 `1.18.4`。**内部 API 无稳定性承诺**，别的部署版本不同、字段可能漂移。
+换环境后建议先按 `references/api-contract.md` §5 的办法验一遍：
+建一个一次性测试集 → 灌 1 条 → 回读比对字段有没有被丢 → 删掉。确认无误再全量。
+
 ## 建模：什么进 `triggerInputs`，什么进 history
 
 `triggerInputs` 只放**触发这一轮的那条消息**，此前的所有上下文进 history。

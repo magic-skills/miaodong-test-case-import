@@ -66,6 +66,29 @@ class MiaodongClient:
             self._log(f"         orgId {self.org_id}")
         return who
 
+    def capabilities(self, echo=True):
+        """探测目标环境支持哪一代测试中心。换客户/换部署的第一步。
+
+        新一代(Agent Test Lab)有场景树；老一代只有 测试集 + 测试用例。
+        404 = 该接口不存在（老版本），200 = 支持。
+        """
+        probe = {"test_set": "/test-center/test-set/list",
+                 "scenario_tree": "/test-center/scenario/tree",
+                 "session_memory": "/session-memory/list"}
+        caps = {}
+        for k, path in probe.items():
+            try: self._get(path, "&current=1&pageSize=1"); caps[k] = True
+            except Exception as e: caps[k] = False if "404" in str(e) else f"? {str(e)[:60]}"
+        caps["generation"] = "new (Agent Test Lab, 有场景树)" if caps.get("scenario_tree") is True \
+                             else "old (仅测试集+用例，无场景树)"
+        if echo:
+            self._log(f"  能力: {caps['generation']}")
+            for k in ("test_set", "scenario_tree", "session_memory"):
+                self._log(f"    {k}: {caps[k]}")
+            if caps.get("test_set") is not True:
+                self._log("    ⚠️ 连测试集列表都取不到——域名/orgId/token 可能不对，先别继续。")
+        return caps
+
     # ---------- 只读 ----------
     def scenario_tree(self):
         return (self._get("/test-center/scenario/tree") or {}).get("tree", [])
@@ -94,7 +117,9 @@ class MiaodongClient:
         """「消息历史」会话属性的 id —— per-bot，禁止硬编码复用。"""
         for v in self.session_memory():
             if v.get("name") == "消息历史": return v["id"]
-        raise RuntimeError("该 bot 没有名为「消息历史」的会话属性，请先用 session_memory() 人工确认变量名。")
+        names = [v.get("name") for v in self.session_memory()]
+        raise RuntimeError(f"该 bot 没有名为「消息历史」的会话属性。现有: {names[:20]}"
+                           " —— 换环境时变量名可能不同，用 session_memory() 人工确认后直接传 history_var_id。")
 
     def list_test_sets(self):
         return self._paged("/test-center/test-set/list", page_size=100)
@@ -168,19 +193,34 @@ class MiaodongClient:
         got = {c["name"]: c["testCaseId"] for c in self.list_cases(ts)}
         self._log(f"  回读 {len(got)} 条")
 
-        smap = scenario_map if scenario_map is not None else self.scenario_map()
-        by, missing = defaultdict(list), []
-        for c in cases:
-            cid = got.get(c["name"])
-            if not cid: missing.append(c["name"]); continue
-            sc = c.get("_scenario")
-            if sc: by[smap.get(sc, sc)].append(cid)
-        attached = {}
-        for node_id, ids in by.items():
-            attached[node_id] = self.attach_scenario(node_id, ids)
-            self._log(f"  挂载 {node_id}: {attached[node_id]}/{len(ids)}")
+        # 挂场景是可选步骤：老版本部署没有场景树，取不到就降级跳过，
+        # 绝不能因此让「用例已写入但脚本报错退出」。
+        smap, attached, skipped = scenario_map, {}, None
+        wants = [c for c in cases if c.get("_scenario")]
+        if wants and smap is None:
+            try: smap = self.scenario_map()
+            except Exception as e:
+                skipped = f"取不到场景树({str(e)[:80]})"
+                self._log(f"  ⚠️ {skipped} —— 跳过挂载。用例已在测试集里，可用不带 _scenario 的方式使用。")
+        if wants and smap is not None:
+            by, unknown = defaultdict(list), set()
+            for c in wants:
+                cid = got.get(c["name"])
+                if not cid: continue
+                sc = c["_scenario"]
+                if sc not in smap and not (len(sc) == 36 and sc.count("-") == 4):
+                    unknown.add(sc); continue
+                by[smap.get(sc, sc)].append(cid)
+            if unknown:
+                self._log(f"  ⚠️ 场景树里没有这些节点，未挂载: {sorted(unknown)}")
+                self._log(f"     该 bot 现有场景: {sorted(smap)}")
+            for node_id, ids in by.items():
+                attached[node_id] = self.attach_scenario(node_id, ids)
+                self._log(f"  挂载 {node_id}: {attached[node_id]}/{len(ids)}")
+        missing = [c["name"] for c in cases if not got.get(c["name"])]
         return {"testSetId": ts, "name": name, "submitted": len(cases),
-                "readback": len(got), "attached": attached, "missing": missing}
+                "readback": len(got), "attached": attached, "missing": missing,
+                "scenarioSkipped": skipped}
 
     def drop_test_set(self, name_or_id):
         """删除测试集及其全部用例（先删用例再删集，避免场景树残留计数）。"""
@@ -249,6 +289,8 @@ if __name__ == "__main__":
     c = client_from_env()
     print("=== 目标 ===")
     c.whoami()
+    print("\n=== 环境能力 ===")
+    caps = c.capabilities()
     print("\n=== 场景树 ===")
     for n in c.scenario_nodes():
         print(f"  {n['path']}  own={n['ownCaseCount']} total={n['totalCaseCount']}  {n['id']}")
