@@ -138,7 +138,7 @@ skill 不含任何凭证，也不绕过鉴权。同事能导到哪个客户，�
 
 ```bash
 # 存（在目标客户控制台取到三项后，跑一次即可；带 MD_TOKEN 会自动把智能体名存进备注）
-MD_BASE=https://a-insight.example.com MD_ORG=<orgId> MD_BOT=<botId> MD_TOKEN=<JWT> \
+MD_BASE=https://your-console.example.com MD_ORG=<orgId> MD_BOT=<botId> MD_TOKEN=<JWT> \
   python3 scripts/md_client.py save 客户A
 
 python3 scripts/md_client.py profiles      # 列出所有客户

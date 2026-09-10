@@ -348,7 +348,7 @@ def client_from_env():
         sys.exit(
             f"缺少环境变量: {', '.join(missing)}\n"
             "取法（浏览器登录控制台后，在目标智能体页面打开 Console）：\n"
-            "  MD_BASE  = 控制台域名，如 https://xxx-insight.example.com\n"
+            "  MD_BASE  = 控制台域名，如 https://your-console.example.com\n"
             "  MD_BOT   = 地址栏 /main/agents/<botId>/... 里的那段 UUID\n"
             "  MD_ORG   = JSON.parse(localStorage.user).currentOrg.id\n"
             "  MD_TOKEN = JSON.parse(localStorage.user).token\n"
