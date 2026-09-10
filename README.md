@@ -11,7 +11,7 @@
 ## 快速开始
 
 ```bash
-bash scripts/install.sh          # 装到 Claude Code + Codex（幂等，可反复跑）
+bash scripts/install.sh          # 装到 Claude Code / Codex / ~/.agents（幂等，可反复跑）
 pip3 install requests
 
 # 登录控制台，进到目标智能体页面，打开浏览器 Console
@@ -39,6 +39,30 @@ python3 scripts/md_client.py     # 打印目标智能体 / 场景树 / 测试集
 | 鉴权只认 `Authorization` 头 | cookie 请求一律 401 | 从 `localStorage.user` 取 JWT |
 
 **导入成功 ≠ 数据正确**，`{"code":0}` 骗人。所以本 skill 把「审计」做成流程的必经一步。
+
+## 在 Claude Code / Codex 里用
+
+装完重启会话即可：
+
+| Runtime | 触发方式 |
+|---|---|
+| Claude Code | 描述需求自动触发（如「把这个 Excel 导成秒懂测试用例」），或打 `/miaodong-test-case-import` |
+| Codex | `$miaodong-test-case-import`，或 `/skills` 里选 |
+
+`install.sh` 用 symlink 装到三个位置（`~/.claude/skills`、`~/.codex/skills`、`~/.agents/skills`），
+以后 `git pull` 一下就更新，不用重装。
+
+## 多客户切换（profile）
+
+同时对接多个客户时，把稳定的环境坐标存成 profile，避免每次手 export 四个变量搞错 `MD_BOT`：
+
+```bash
+MD_BASE=.. MD_ORG=.. MD_BOT=.. MD_TOKEN=.. python3 scripts/md_client.py save 客户A
+python3 scripts/md_client.py profiles
+MD_PROFILE=客户A MD_TOKEN=<JWT> python3 scripts/md_client.py
+```
+
+存在 `~/.miaodong/profiles.json`（权限 600，不在仓库里），**只存 base/org/bot，绝不存 token**。
 
 ## 换客户 / 换部署
 

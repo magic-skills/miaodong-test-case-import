@@ -4,7 +4,7 @@
 零领域逻辑：不硬编码任何 bot / org / 场景 UUID / 表格列名。
 用法见 SKILL.md；接口契约与踩坑见 references/api-contract.md。
 """
-import json, time, sys
+import json, os, time, sys
 from collections import defaultdict
 import requests
 
@@ -269,23 +269,95 @@ def build_case(name, trigger_type, trigger_inputs, *, dimension=None, history=No
     return c
 
 
+# ---------- 多客户 profile ----------
+# 一个人常同时对接多个客户的私有部署。域名/org/bot 是稳定的，存成 profile；
+# token 会过期且是个人凭证，**不存盘**，每次从环境变量给。
+PROFILE_PATH = os.path.join(os.path.expanduser("~"), ".miaodong", "profiles.json")
+
+
+def load_profiles():
+    try:
+        with open(PROFILE_PATH, encoding="utf-8") as f: return json.load(f)
+    except FileNotFoundError: return {}
+    except Exception as e: sys.exit(f"profiles.json 读取失败: {e}")
+
+
+def save_profile(name, base, org, bot, note=""):
+    ps = load_profiles()
+    ps[name] = {"base": base, "org": org, "bot": bot, "note": note}
+    os.makedirs(os.path.dirname(PROFILE_PATH), exist_ok=True)
+    with open(PROFILE_PATH, "w", encoding="utf-8") as f:
+        json.dump(ps, f, ensure_ascii=False, indent=2)
+    os.chmod(PROFILE_PATH, 0o600)
+    return PROFILE_PATH
+
+
 def client_from_env():
-    """从环境变量建客户端：MD_BASE, MD_ORG, MD_BOT, MD_TOKEN。"""
-    import os
+    """建客户端。两种方式：
+
+    1) 直接给环境变量 MD_BASE / MD_ORG / MD_BOT / MD_TOKEN
+    2) MD_PROFILE=<客户名> + MD_TOKEN   （前三项从 ~/.miaodong/profiles.json 读）
+
+    token 永远只从环境变量取，不落盘。
+    """
+    prof = os.environ.get("MD_PROFILE")
+    if prof:
+        ps = load_profiles()
+        if prof not in ps:
+            sys.exit(f"没有名为「{prof}」的 profile。已有: {sorted(ps) or '（空）'}\n"
+                     f"新增: MD_BASE=.. MD_ORG=.. MD_BOT=.. python3 md_client.py save {prof}")
+        p = ps[prof]
+        base, org, bot = p["base"], p["org"], p["bot"]
+        if not os.environ.get("MD_TOKEN"):
+            sys.exit("profile 只存环境坐标，不存 token。请另外给 MD_TOKEN=<JWT>")
+        print(f"  profile「{prof}」{p.get('note') or ''}")
+        return MiaodongClient(base, org, bot, os.environ["MD_TOKEN"])
+
     missing = [k for k in ("MD_BASE", "MD_ORG", "MD_BOT", "MD_TOKEN") if not os.environ.get(k)]
     if missing:
+        ps = load_profiles()
         sys.exit(
             f"缺少环境变量: {', '.join(missing)}\n"
             "取法（浏览器登录控制台后，在目标智能体页面打开 Console）：\n"
             "  MD_BASE  = 控制台域名，如 https://xxx-insight.example.com\n"
             "  MD_BOT   = 地址栏 /main/agents/<botId>/... 里的那段 UUID\n"
             "  MD_ORG   = JSON.parse(localStorage.user).currentOrg.id\n"
-            "  MD_TOKEN = JSON.parse(localStorage.user).token")
+            "  MD_TOKEN = JSON.parse(localStorage.user).token\n"
+            + (f"\n或用已存的 profile: MD_PROFILE=<{'|'.join(sorted(ps))}> MD_TOKEN=.." if ps else
+               "\n多客户可存 profile: MD_BASE=.. MD_ORG=.. MD_BOT=.. python3 md_client.py save <客户名>"))
     return MiaodongClient(os.environ["MD_BASE"], os.environ["MD_ORG"],
                           os.environ["MD_BOT"], os.environ["MD_TOKEN"])
 
 
+def _cli():
+    args = sys.argv[1:]
+    if args and args[0] == "profiles":
+        ps = load_profiles()
+        if not ps: print(f"（空）{PROFILE_PATH} 还没有 profile"); return True
+        print(f"{PROFILE_PATH}:")
+        for k, v in ps.items():
+            print(f"  {k:<16} {v['base']}  bot={v['bot']}  {v.get('note','')}")
+        print("\n用法: MD_PROFILE=<名字> MD_TOKEN=<JWT> python3 md_client.py")
+        return True
+    if args and args[0] == "save":
+        if len(args) < 2: sys.exit("用法: MD_BASE=.. MD_ORG=.. MD_BOT=.. python3 md_client.py save <客户名> [备注]")
+        miss = [k for k in ("MD_BASE", "MD_ORG", "MD_BOT") if not os.environ.get(k)]
+        if miss: sys.exit(f"缺少 {', '.join(miss)}")
+        note = " ".join(args[2:])
+        # 有 token 就顺手把 bot 名存进备注，方便日后辨认
+        if not note and os.environ.get("MD_TOKEN"):
+            try:
+                note = (MiaodongClient(os.environ["MD_BASE"], os.environ["MD_ORG"],
+                                       os.environ["MD_BOT"], os.environ["MD_TOKEN"],
+                                       verbose=False).bot_info() or {}).get("name", "")
+            except Exception: pass
+        print(f"已保存 profile「{args[1]}」-> {save_profile(args[1], os.environ['MD_BASE'], os.environ['MD_ORG'], os.environ['MD_BOT'], note)}")
+        return True
+    return False
+
+
 if __name__ == "__main__":
+    if _cli(): sys.exit(0)
     c = client_from_env()
     print("=== 目标 ===")
     c.whoami()

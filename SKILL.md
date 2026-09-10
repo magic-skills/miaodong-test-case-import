@@ -83,6 +83,29 @@ audit(c, rep["testSetId"], cases)
 reconcile_scenario_tree(c, expected_total=len(cases))
 ```
 
+## 多客户切换（profile）
+
+一个人常同时对接多个客户的私有部署，每次手 export 四个变量容易搞错——而**搞错 `MD_BOT`
+就是把用例灌进别的智能体**。把稳定的环境坐标存成 profile：
+
+```bash
+# 存（在目标客户控制台取到三项后，跑一次即可；带 MD_TOKEN 会自动把智能体名存进备注）
+MD_BASE=https://a-insight.example.com MD_ORG=<orgId> MD_BOT=<botId> MD_TOKEN=<JWT> \
+  python3 scripts/md_client.py save 客户A
+
+python3 scripts/md_client.py profiles      # 列出所有客户
+```
+
+```bash
+# 用（只需给 token）
+MD_PROFILE=客户A MD_TOKEN=<JWT> python3 scripts/md_client.py
+```
+
+profile 存在 `~/.miaodong/profiles.json`（权限 600，**不在仓库里**）。
+**只存 base / org / bot / 备注，绝不存 token**——token 会过期，而且是个人凭证。
+
+每次运行仍会打印目标智能体名字，profile 不替代那道确认。
+
 ## 换客户 / 换部署
 
 秒懂多为私有部署，**不同客户的域名、组织、智能体、场景树、会话变量、乃至平台版本都不同**。
