@@ -14,13 +14,17 @@
 bash scripts/install.sh          # 装到 Claude Code + Codex（幂等，可反复跑）
 pip3 install requests
 
+# 登录控制台，进到目标智能体页面，打开浏览器 Console
 export MD_BASE=https://<你的秒懂控制台域名>
-export MD_ORG=<orgId>
-export MD_BOT=<botId>
-export MD_TOKEN=<JWT>            # 浏览器 Console: JSON.parse(localStorage.user).token
+export MD_BOT=<botId>            # 地址栏 /main/agents/<botId>/... 里那段 UUID
+export MD_ORG=<orgId>            # JSON.parse(localStorage.user).currentOrg.id
+export MD_TOKEN=<JWT>            # JSON.parse(localStorage.user).token
 
-python3 scripts/md_client.py     # 打印场景树 / 测试集 / 「消息历史」变量 id
+python3 scripts/md_client.py     # 打印目标智能体 / 场景树 / 测试集 / 「消息历史」变量 id
 ```
+
+⚠️ **用例落在哪由 `MD_BOT` 决定**。弄错就会灌进别人的智能体，还会挂上那个 bot 的场景树、
+污染它的回归集。所以 `import_test_set()` 每次都先打印目标智能体的名字，跑之前看一眼。
 
 ## 为什么需要这个 skill
 

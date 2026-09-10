@@ -48,6 +48,24 @@ class MiaodongClient:
             if len(d) < page_size: return out
             page += 1
 
+    # ---------- 目标确认 ----------
+    def bot_info(self):
+        """当前 MD_BOT 指向的智能体基本信息（name / botStatus / canvasName …）。"""
+        return self._get("/bot/basic-info")   # botId 已在 self.q 里，重复传会被解析成数组 -> 400
+
+    def whoami(self, echo=True):
+        """导入前务必确认：这批用例到底会落到哪个环境的哪个智能体上。"""
+        try: bot = self.bot_info() or {}
+        except Exception as e: bot = {"name": f"<取不到: {e}>"}
+        who = {"console": self.base.removesuffix("/api"), "orgId": self.org_id,
+               "botId": self.bot_id, "botName": bot.get("name"),
+               "canvas": bot.get("canvasName"), "botStatus": bot.get("botStatus")}
+        if echo:
+            self._log(f"  目标 → {who['console']}")
+            self._log(f"         智能体「{who['botName']}」 ({self.bot_id})")
+            self._log(f"         orgId {self.org_id}")
+        return who
+
     # ---------- 只读 ----------
     def scenario_tree(self):
         return (self._get("/test-center/scenario/tree") or {}).get("tree", [])
@@ -135,6 +153,7 @@ class MiaodongClient:
         scenario_map: {场景名: nodeId}；省略则调 scenario_map() 自取。
         """
         if not cases: raise ValueError("cases 为空")
+        self.whoami()   # 用例会落到这个 bot 的测试集 + 该 bot 的场景树上，导错 bot 很难清理
         names = [c["name"] for c in cases]
         if len(set(names)) != len(names):
             dup = [n for n in set(names) if names.count(n) > 1][:5]
@@ -215,16 +234,22 @@ def client_from_env():
     import os
     missing = [k for k in ("MD_BASE", "MD_ORG", "MD_BOT", "MD_TOKEN") if not os.environ.get(k)]
     if missing:
-        sys.exit(f"缺少环境变量: {', '.join(missing)}\n"
-                 "MD_TOKEN 取法：浏览器登录控制台後在 Console 执行 "
-                 "JSON.parse(localStorage.user).token")
+        sys.exit(
+            f"缺少环境变量: {', '.join(missing)}\n"
+            "取法（浏览器登录控制台后，在目标智能体页面打开 Console）：\n"
+            "  MD_BASE  = 控制台域名，如 https://xxx-insight.example.com\n"
+            "  MD_BOT   = 地址栏 /main/agents/<botId>/... 里的那段 UUID\n"
+            "  MD_ORG   = JSON.parse(localStorage.user).currentOrg.id\n"
+            "  MD_TOKEN = JSON.parse(localStorage.user).token")
     return MiaodongClient(os.environ["MD_BASE"], os.environ["MD_ORG"],
                           os.environ["MD_BOT"], os.environ["MD_TOKEN"])
 
 
 if __name__ == "__main__":
     c = client_from_env()
-    print("=== 场景树 ===")
+    print("=== 目标 ===")
+    c.whoami()
+    print("\n=== 场景树 ===")
     for n in c.scenario_nodes():
         print(f"  {n['path']}  own={n['ownCaseCount']} total={n['totalCaseCount']}  {n['id']}")
     print("\n=== 测试集 ===")

@@ -38,9 +38,24 @@ description: Use when creating, importing, exporting, auditing or bulk-editing t
 
 ## 用法
 
+### 用例会落到哪里
+
+四层定位，全由环境变量和参数决定，**没有默认值**：
+
+| 层 | 由什么决定 | 怎么拿 |
+|---|---|---|
+| 哪个控制台 | `MD_BASE` | 控制台域名 |
+| 哪个组织 | `MD_ORG` | Console: `JSON.parse(localStorage.user).currentOrg.id` |
+| **哪个智能体** | `MD_BOT` | 地址栏 `/main/agents/<botId>/...` 里那段 UUID |
+| 哪个测试集 | `import_test_set(name, …)` | 新建，重名会拒绝 |
+| 哪个场景节点 | 每条 case 的 `_scenario` | 挂到**该 bot 的**场景树上 |
+
+⚠️ **`MD_BOT` 弄错 = 用例灌进别人的智能体**，而且会挂上那个 bot 的场景树、污染它的回归集，
+清理要逐条 `batch-delete`。所以 `import_test_set()` 每次都会先打印目标智能体的名字——**看一眼再让它跑下去**。
+
 ```bash
 export MD_BASE=https://<控制台域名>  MD_ORG=<orgId>  MD_BOT=<botId>  MD_TOKEN=<JWT>
-python3 scripts/md_client.py          # 先看场景树、测试集、消息历史变量 id
+python3 scripts/md_client.py          # 打印目标智能体 + 场景树 + 测试集 + 消息历史变量 id
 ```
 
 ```python
