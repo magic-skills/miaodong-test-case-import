@@ -87,13 +87,24 @@ reconcile_scenario_tree(c, expected_total=len(cases))
 
 **结论：给「域名 + 哪个智能体」，永远不给 token。**
 
+**四个变量一个都不能少，区别只在「谁去拿」。**
+
 | 变量 | 谁提供 | 说明 |
 |---|---|---|
-| `MD_TOKEN` | **同事自己** | JWT 里编着身份(id/name/email)。给他你的 token = 共享账号，操作都记你名下，且会过期 |
+| `MD_TOKEN` | **同事本人必须提供**（自己去取，不能用你的） | JWT 里编着身份(id/name/email)。用你的 token = 共享账号，操作全记你名下，且会过期 |
 | `MD_ORG` | 他自己取 | 登录后从 localStorage 取 |
 | `MD_BOT` | 他自己取 | 打开目标智能体，地址栏里就有 |
-| **`MD_BASE`** | **你给** | 私有化部署域名，猜不到 |
+| `MD_BASE` / `MD_ZONE` | 你告诉他**区代号或客户名**即可 | 域名已内置，见 `references/environments.md` |
 | **哪个智能体** | **你给** | 业务信息。给**名字**，不是 UUID |
+
+前三项他跑一次 `bootstrap` 就全拿到了（见下）。你真正要交代的只有：
+**「哪个区/哪个客户」+「哪个智能体」**。
+
+```bash
+MD_ZONE=X ...          # 标准区
+MD_ZONE=兴趣岛 ...      # 独立部署
+python3 scripts/md_client.py zones    # 查全表
+```
 
 ### 最省事的交接：发一个 profile 串
 

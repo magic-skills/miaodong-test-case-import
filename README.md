@@ -54,7 +54,13 @@ python3 scripts/md_client.py     # 打印目标智能体 / 场景树 / 测试集
 
 ## 凭证与多客户
 
-**给同事「域名 + 哪个智能体」，永远不给 token**——JWT 里编着身份，给出去等于共享账号。
+**你交代「哪个区/客户 + 哪个智能体」；token 由同事本人提供（自己取，不能用你的）**
+——JWT 里编着身份，转交等于共享账号，且会过期。
+
+```bash
+python3 scripts/md_client.py zones      # 12 个标准区 + 4 个独立部署，见 references/environments.md
+MD_ZONE=X ...        # 或 MD_ZONE=兴趣岛 ...，代替 MD_BASE
+```
 
 ```bash
 # 拿全四个变量：打印一段 JS，在目标客户控制台的智能体页面 Console 里执行，

@@ -292,6 +292,44 @@ def save_profile(name, base, org, bot, note=""):
     return PROFILE_PATH
 
 
+# ---------- 环境地图 ----------
+# 秒懂分「标准区」(多客户共用集群) 和「独立部署」(单客户专属)。
+# ⚠️ 内部拓扑，勿外传；本仓库为私有仓库。
+STANDARD_ZONES = {
+    "A": "insight.juzibot.com",
+    "B": "lighthouse-insight.juzibot.com",
+    "C": "echo-insight.juzibot.com",
+    "D": "lantern-insight.juzibot.com",
+    "E": "horizon-insight.juzibot.com",
+    "F": "grove-insight.juzibot.com",
+    "G": "fireside-insight.juzibot.com",
+    "H": "glimmer-insight.juzibot.com",
+    "I": "stride-md.dpclouds.com",          # 唯一不在 juzibot.com 上的
+    "J": "journey-insight.juzibot.com",
+    "X": "willow-insight.juzibot.com",
+    "Z": "az-insight.juzibot.com",
+}
+DEDICATED = {                                # 独立部署，key 是客户名
+    "量子之歌": "inkwell-insight.juzibot.com",
+    "有赞":     "petal-insight.juzibot.com",
+    "网易":     "cloudweave-insight.juzibot.com",
+    "兴趣岛":   "xlink-insight.juzibot.com",
+}
+# ⚠️ xlink-insight 是【兴趣岛独立部署】，不是「X 区」——X 区是 willow-insight。
+ZONES = {**STANDARD_ZONES, **DEDICATED}
+
+
+def resolve_zone(key):
+    """区代号(A~Z) 或 客户名 -> https://域名。认不出就返回 None。"""
+    if not key: return None
+    k = key.strip()
+    for cand in (k, k.upper()):
+        if cand in ZONES: return "https://" + ZONES[cand]
+    if "." in k:                              # 直接给了域名
+        return k if k.startswith("http") else "https://" + k
+    return None
+
+
 SHARE_PREFIX = "md-profile:"
 
 JS_SNIPPET = r"""(()=>{try{const u=JSON.parse(localStorage.user);const b=location.pathname.match(/\/agents\/([0-9a-f-]{36})/);if(!u?.token)return'❌ 没读到登录态,先登录控制台';if(!b)return'❌ 请先打开目标智能体页面(地址栏含 /agents/<id>/)再执行';const s=`export MD_BASE=${location.origin} MD_ORG=${u.currentOrg.id} MD_BOT=${b[1]} MD_TOKEN=${u.token}`;try{copy(s)}catch(e){};console.log(s);return'✅ 已复制到剪贴板,粘到终端即可'}catch(e){return'❌ '+e.message}})()"""
@@ -342,13 +380,23 @@ def client_from_env():
         print(f"  profile「{prof}」{p.get('note') or ''}")
         return MiaodongClient(base, org, bot, os.environ["MD_TOKEN"])
 
+    # MD_ZONE=X 或 MD_ZONE=兴趣岛 可代替 MD_BASE
+    zone = os.environ.get("MD_ZONE")
+    if zone and not os.environ.get("MD_BASE"):
+        base = resolve_zone(zone)
+        if not base:
+            sys.exit(f"认不出 MD_ZONE=「{zone}」。可用: 标准区 {'/'.join(STANDARD_ZONES)} | "
+                     f"独立部署 {'/'.join(DEDICATED)}\n跑 `python3 md_client.py zones` 看全表")
+        os.environ["MD_BASE"] = base
+
     missing = [k for k in ("MD_BASE", "MD_ORG", "MD_BOT", "MD_TOKEN") if not os.environ.get(k)]
     if missing:
         ps = load_profiles()
         sys.exit(
             f"缺少环境变量: {', '.join(missing)}\n"
             "取法（浏览器登录控制台后，在目标智能体页面打开 Console）：\n"
-            "  MD_BASE  = 控制台域名，如 https://your-console.example.com\n"
+            "  MD_BASE  = 控制台域名；或用 MD_ZONE=<区代号|客户名> 自动解析\n"
+            "             （区代号见 `python3 md_client.py zones`）\n"
             "  MD_BOT   = 地址栏 /main/agents/<botId>/... 里的那段 UUID\n"
             "  MD_ORG   = JSON.parse(localStorage.user).currentOrg.id\n"
             "  MD_TOKEN = JSON.parse(localStorage.user).token\n"
@@ -367,6 +415,15 @@ def _cli():
         for k, v in ps.items():
             print(f"  {k:<16} {v['base']}  bot={v['bot']}  {v.get('note','')}")
         print("\n用法: MD_PROFILE=<名字> MD_TOKEN=<JWT> python3 md_client.py")
+        return True
+    if args and args[0] == "zones":
+        print("标准区（多客户共用集群）:")
+        for k, v in STANDARD_ZONES.items(): print(f"  {k:<8} https://{v}")
+        print("\n独立部署（单客户专属）:")
+        for k, v in DEDICATED.items(): print(f"  {k:<8} https://{v}")
+        print("\n用法: MD_ZONE=X ...  或  MD_ZONE=兴趣岛 ...   （代替 MD_BASE）")
+        print("⚠️ xlink-insight 是【兴趣岛独立部署】，不是 X 区（X 区是 willow-insight）")
+        print("⚠️ 内部拓扑，勿外传")
         return True
     if args and args[0] == "bootstrap":
         print("""在【目标客户的控制台】里做（每个客户各做一次）：
