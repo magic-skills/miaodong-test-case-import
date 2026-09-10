@@ -1,0 +1,9 @@
+# Codex-only additive UI metadata (optional). Claude Code ignores this file; the portable
+# core stays in SKILL.md's name+description. Safe to delete if you don't use Codex.
+display_name: Miaodong Test Case Import
+short_description: Bulk-import test cases into a 秒懂 / JZ Insight test-center from Excel, chat logs or any structured source.
+default_prompt: |
+  Read references/data-model.md before writing any case. Generate cases with a deterministic
+  script (never row-by-row by hand), then: create test set -> create in batches of 50 ->
+  read back to map name->testCaseId -> attach-cases to scenario nodes -> audit field-by-field.
+  create silently drops scenarioNodeId and dimensionDetail; update is a full overwrite.

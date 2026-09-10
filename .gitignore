@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# editor / local
+*.swp
+.idea/
+.vscode/
+
+# logs
+*.log
+
+# 本地凭证 / 导出物，永远不要提交
+.tk
+*.token
+cases*.json
+report*.json
+backup_*.json
