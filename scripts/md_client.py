@@ -273,9 +273,8 @@ def build_case(name, trigger_type, trigger_inputs, *, dimension=None, history=No
 # 一个人常同时对接多个客户的私有部署。域名/org/bot 是稳定的，存成 profile；
 # token 会过期且是个人凭证，**不存盘**，每次从环境变量给。
 PROFILE_PATH = os.path.join(os.path.expanduser("~"), ".miaodong", "profiles.json")
-# 当前会话凭证。存在的意义：在 Claude Code / Codex 里，用户在自己终端 export 的变量
-# agent 看不到（每次 Bash 都是新 shell）。没有这个文件，用户就只能把 token 贴进对话历史——
-# 那更不安全。所以落到本地 600 文件，token 不经过对话。
+# 当前会话凭证。存在的意义：agent 每次 Bash 调用都是新 shell，不继承用户终端的环境变量。
+# 落到本地 600 文件后，取一次凭证就够，不必每条命令都重新带上 token。
 SESSION_PATH = os.path.join(os.path.expanduser("~"), ".miaodong", "session")
 
 
@@ -356,7 +355,7 @@ def resolve_zone(key):
 
 SHARE_PREFIX = "md-profile:"
 
-JS_SNIPPET = r"""(()=>{try{const u=JSON.parse(localStorage.user);const b=location.pathname.match(/\/agents\/([0-9a-f-]{36})/);if(!u?.token)return'❌ 没读到登录态,先登录控制台';if(!b)return'❌ 请先打开目标智能体页面(地址栏含 /agents/<id>/)再执行';const s=`export MD_BASE=${location.origin} MD_ORG=${u.currentOrg.id} MD_BOT=${b[1]} MD_TOKEN=${u.token}`;try{copy(s)}catch(e){};console.log(s);return'✅ 已复制到剪贴板,粘到终端即可'}catch(e){return'❌ '+e.message}})()"""
+JS_SNIPPET = r"""(()=>{try{const u=JSON.parse(localStorage.user);const b=location.pathname.match(/\/agents\/([0-9a-f-]{36})/);if(!u?.token)return'❌ 没读到登录态，先登录秒懂控制台';if(!b)return'❌ 请先进入某个智能体的页面（地址栏要含 /agents/<id>/）再执行';const s=`MD_BASE=${location.origin} MD_ORG=${u.currentOrg.id} MD_BOT=${b[1]} MD_TOKEN=${u.token} python3 __CMD_PATH__ login`;try{copy(s)}catch(e){};console.log(s);return'✅ 已复制，粘到 Claude Code / Codex 或终端里直接回车'}catch(e){return'❌ '+e.message}})()"""
 
 
 def share_profile(name):
@@ -456,8 +455,8 @@ def _cli():
                      "在你自己的终端执行它，再跑一次 login。")
         path = _write_session(keep)
         print(f"已保存到 {path} (600)：{', '.join(sorted(keep))}")
-        print("此后同一台机器上的脚本 / Claude Code / Codex 都能直接用，不必再 export，")
-        print("也不用把 token 贴进对话。用完或换客户: python3 md_client.py logout")
+        print("此后这台机器上的脚本 / Claude Code / Codex 都能直接读到，不必重复取凭证。")
+        print("换客户或用完: python3 md_client.py logout")
         return True
     if args and args[0] == "logout":
         try: os.remove(SESSION_PATH); print(f"已清除 {SESSION_PATH}")
@@ -473,25 +472,32 @@ def _cli():
         print("⚠️ 内部拓扑，勿外传")
         return True
     if args and args[0] == "bootstrap":
-        print("""在【目标客户的控制台】里做（每个客户各做一次）：
+        cmd_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "md_client.py")
+        print("""【取凭证】每个环境做一次，约 30 秒。
 
-  1. 浏览器登录该客户控制台，打开你要导入的那个智能体页面
-     （地址栏形如 https://<域名>/main/agents/<botId>/...）
-  2. 打开开发者工具 Console：Chrome/Edge  Cmd+Option+J (mac) / F12 (win)
-     ⚠️ 首次可能提示不允许粘贴，按提示输入 allow pasting 后回车
-  3. 粘贴下面整行并回车：
+  第 1 步  浏览器打开秒懂控制台并登录，选择一个智能体、进入该智能体。
+           （地址栏要变成  .../agents/<一串 id>/...  这步很关键，脚本靠它认出是哪个智能体）
 
-""" + JS_SNIPPET + """
+  第 2 步  在这个页面打开浏览器控制台：
+           右键 → 检查 → 切到「Console / 控制台」标签
+           （快捷键：mac  Cmd+Option+J ／ win  F12）
+           ⚠️ 首次粘贴可能被拦，按提示输入  allow pasting  回车再继续。
 
-  4. 会自动复制好一整行 export 命令，直接粘到终端执行。
-  5. 紧接着跑一次：  python3 md_client.py login
-     把凭证存进 ~/.miaodong/session (600)。这样在 Claude Code / Codex 里，
-     agent 新开的 shell 也能读到——**你不必把 token 贴进对话**。
+  第 3 步  把下面一整行粘进去，回车：
 
-注意：
-  · 这一行里含你的 JWT，等同于你的账号——**不要发到群里/工单/文档**。
-  · token 会过期，脚本报 401 就回来重做一次。
-  · localStorage 按域名隔离：必须在【该客户】的控制台页面执行，换客户要重做。""")
+""" + JS_SNIPPET.replace("__CMD_PATH__", cmd_path) + """
+
+  第 4 步  它已经把一条完整命令复制到你的剪贴板了。
+           直接粘到 Claude Code / Codex 的输入框（或任意终端）回车即可，不用改任何东西。
+
+           凭证会存进 ~/.miaodong/session（权限 600），之后这台机器上的脚本、
+           Claude Code、Codex 都能直接读到，不必再重复这套动作。
+
+其他：
+  · 那条命令里含你的 JWT，等同于你的账号：别发到群里 / 工单 / 文档。
+  · token 会过期。脚本报 401 就回到第 1 步重做一次。
+  · 浏览器 localStorage 按域名隔离——换环境（换客户/换区）要重做一次。
+  · 换环境或用完： python3 """ + cmd_path + """ logout""")
         return True
     if args and args[0] == "share":
         if len(args) < 2: sys.exit("用法: python3 md_client.py share <客户名>")

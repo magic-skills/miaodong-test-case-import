@@ -67,10 +67,10 @@ MD_ZONE=X ...        # 或 MD_ZONE=兴趣岛 ...，代替 MD_BASE
 # 自动把 export MD_BASE=.. MD_ORG=.. MD_BOT=.. MD_TOKEN=.. 复制到剪贴板
 python3 scripts/md_client.py bootstrap
 
-# 存起来：之后同机的脚本 / Claude Code / Codex 都能直接读到（~/.miaodong/session, 600）
-# agent 新开的 shell 不继承你终端的环境变量，这一步让你不必把 token 贴进对话
-python3 scripts/md_client.py login
-python3 scripts/md_client.py logout     # 用完或换客户
+#   -> 照它说的在秒懂控制台 Console 里粘一段 JS，会复制好一条完整命令，
+#      直接贴进 Claude Code / Codex 输入框或终端回车即可，凭证自动落盘
+#      (~/.miaodong/session, 600)，agent 新开的 shell 也读得到
+python3 scripts/md_client.py logout     # 换客户或用完
 
 # 多客户：存成 profile（只存 base/org/bot，绝不存 token）
 MD_BASE=.. MD_ORG=.. MD_BOT=.. MD_TOKEN=.. python3 scripts/md_client.py save 客户A
