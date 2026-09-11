@@ -273,6 +273,30 @@ def build_case(name, trigger_type, trigger_inputs, *, dimension=None, history=No
 # 一个人常同时对接多个客户的私有部署。域名/org/bot 是稳定的，存成 profile；
 # token 会过期且是个人凭证，**不存盘**，每次从环境变量给。
 PROFILE_PATH = os.path.join(os.path.expanduser("~"), ".miaodong", "profiles.json")
+# 当前会话凭证。存在的意义：在 Claude Code / Codex 里，用户在自己终端 export 的变量
+# agent 看不到（每次 Bash 都是新 shell）。没有这个文件，用户就只能把 token 贴进对话历史——
+# 那更不安全。所以落到本地 600 文件，token 不经过对话。
+SESSION_PATH = os.path.join(os.path.expanduser("~"), ".miaodong", "session")
+
+
+def _write_session(d):
+    os.makedirs(os.path.dirname(SESSION_PATH), exist_ok=True)
+    with open(SESSION_PATH, "w", encoding="utf-8") as f:
+        for k, v in d.items(): f.write(f"{k}={v}\n")
+    os.chmod(SESSION_PATH, 0o600)
+    return SESSION_PATH
+
+
+def load_session():
+    try:
+        out = {}
+        with open(SESSION_PATH, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and "=" in line and not line.startswith("#"):
+                    k, v = line.split("=", 1); out[k.strip()] = v.strip()
+        return out
+    except FileNotFoundError: return {}
 
 
 def load_profiles():
@@ -367,6 +391,11 @@ def client_from_env():
 
     token 永远只从环境变量取，不落盘。
     """
+    # 环境变量优先；缺的从 ~/.miaodong/session 补（供 agent 在新 shell 里读到）
+    sess = load_session()
+    for k, v in sess.items():
+        if k.startswith("MD_") and not os.environ.get(k): os.environ[k] = v
+
     prof = os.environ.get("MD_PROFILE")
     if prof:
         ps = load_profiles()
@@ -393,8 +422,11 @@ def client_from_env():
     if missing:
         ps = load_profiles()
         sys.exit(
-            f"缺少环境变量: {', '.join(missing)}\n"
-            "取法（浏览器登录控制台后，在目标智能体页面打开 Console）：\n"
+            f"缺少环境变量: {', '.join(missing)}\n\n"
+            "▶ 最省事：python3 md_client.py bootstrap\n"
+            "   照它的提示在控制台 Console 里粘一段 JS，四个变量一次全拿到；\n"
+            "   再跑 python3 md_client.py login 存起来，之后就不用重复 export。\n\n"
+            "手动取法（浏览器登录控制台后，在目标智能体页面打开 Console）：\n"
             "  MD_BASE  = 控制台域名；或用 MD_ZONE=<区代号|客户名> 自动解析\n"
             "             （区代号见 `python3 md_client.py zones`）\n"
             "  MD_BOT   = 地址栏 /main/agents/<botId>/... 里的那段 UUID\n"
@@ -415,6 +447,21 @@ def _cli():
         for k, v in ps.items():
             print(f"  {k:<16} {v['base']}  bot={v['bot']}  {v.get('note','')}")
         print("\n用法: MD_PROFILE=<名字> MD_TOKEN=<JWT> python3 md_client.py")
+        return True
+    if args and args[0] == "login":
+        keep = {k: os.environ[k] for k in ("MD_BASE", "MD_ZONE", "MD_ORG", "MD_BOT", "MD_TOKEN",
+                                           "MD_PROFILE") if os.environ.get(k)}
+        if not keep.get("MD_TOKEN"):
+            sys.exit("当前没有 MD_TOKEN。先按 `python3 md_client.py bootstrap` 取到那行 export，\n"
+                     "在你自己的终端执行它，再跑一次 login。")
+        path = _write_session(keep)
+        print(f"已保存到 {path} (600)：{', '.join(sorted(keep))}")
+        print("此后同一台机器上的脚本 / Claude Code / Codex 都能直接用，不必再 export，")
+        print("也不用把 token 贴进对话。用完或换客户: python3 md_client.py logout")
+        return True
+    if args and args[0] == "logout":
+        try: os.remove(SESSION_PATH); print(f"已清除 {SESSION_PATH}")
+        except FileNotFoundError: print("没有需要清除的会话凭证")
         return True
     if args and args[0] == "zones":
         print("标准区（多客户共用集群）:")
@@ -437,6 +484,9 @@ def _cli():
 """ + JS_SNIPPET + """
 
   4. 会自动复制好一整行 export 命令，直接粘到终端执行。
+  5. 紧接着跑一次：  python3 md_client.py login
+     把凭证存进 ~/.miaodong/session (600)。这样在 Claude Code / Codex 里，
+     agent 新开的 shell 也能读到——**你不必把 token 贴进对话**。
 
 注意：
   · 这一行里含你的 JWT，等同于你的账号——**不要发到群里/工单/文档**。

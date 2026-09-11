@@ -83,6 +83,23 @@ audit(c, rep["testSetId"], cases)
 reconcile_scenario_tree(c, expected_total=len(cases))
 ```
 
+## 缺凭证时怎么做（给 agent 的行为约定）
+
+**绝不要让用户把 token 贴进对话。** 对话历史会被保存/上传，JWT 等同账号。
+发现缺 `MD_TOKEN` / 报 `401 Authentication failed` 时，按这个流程走：
+
+1. 执行 `python3 scripts/md_client.py bootstrap`，把输出**原样转给用户**。
+2. 用户在**自己的终端**执行它产出的那行 `export ...`，紧接着执行
+   `python3 scripts/md_client.py login`。
+3. 凭证落到 `~/.miaodong/session`（600）。**你后续每次 Bash 调用都能直接读到**——
+   agent 的 shell 不继承用户终端的环境变量，这个文件就是为此存在的。
+4. 用完或换客户：`python3 scripts/md_client.py logout`。
+
+用户只需告诉你两件事：**哪个区/客户**（`MD_ZONE`，见 `references/environments.md`）
+和**哪个智能体**。其余三个变量 `bootstrap` 一次全出。
+
+如果用户已经把 token 贴进对话了，不要复述它，提醒他这条消息含凭证即可。
+
 ## 凭证与交接：要告诉同事什么
 
 **结论：给「域名 + 哪个智能体」，永远不给 token。**
